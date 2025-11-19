@@ -21,7 +21,9 @@ public class IKSolver : MonoBehaviour
     [Tooltip("Turn on debug drawing of IK chain.")]
     [SerializeField] bool debug_draw = true;
 
+    private Transform[] mBindPoses;
     private Vector3[] mPositions; // copy of bone positions
+    private Quaternion[] mRotations; // array of bind pose rotations
     private int mEndIndex; // index of end effector
     private float[] mBoneLengths; // length of each joint (in other words, distances between each joint to its next joint)
     private float mTotalLength = 0.0f; // total length of IK chain
@@ -42,14 +44,22 @@ public class IKSolver : MonoBehaviour
             return;
         }
 
-        // Save end index, bone positions and length of each joint
+        // Allocate memory + Save end index, bone positions, rotations and length of each joint
         mEndIndex = count - 1;
+        mBindPoses = new Transform[count];
         mPositions = new Vector3[count];
+        mRotations = new Quaternion[count];
         mBoneLengths = new float[count];
-        for (int i = 0; i < count - 1; i++)
+
+        for (int i = 0; i < count; i++)
         {
-            mBoneLengths[i] = (boneTransforms[i + 1].position - boneTransforms[i].position).magnitude;
-            mTotalLength += mBoneLengths[i];
+            mBindPoses[i] = boneTransforms[i];
+            mRotations[i] = boneTransforms[i].rotation;
+            if (i != mEndIndex)
+            {
+                mBoneLengths[i] = (boneTransforms[i + 1].position - boneTransforms[i].position).magnitude;
+                mTotalLength += mBoneLengths[i];
+            }
         }
     }
 
@@ -83,7 +93,7 @@ public class IKSolver : MonoBehaviour
         // If target is out of reach, just stretch towards it
         if (Vector3.Distance(mPositions[0], target.position) > mTotalLength)
         {
-            Debug.Log("Out of reach");
+            // Debug.Log("Out of reach");
             direction = (target.position - mPositions[0]).normalized; // determine direction towards target
             mPositions[0] = rootOriginalPos; // ensure root is in its original position
             for (int i = 1; i < boneTransforms.Length; i++)
@@ -94,7 +104,7 @@ public class IKSolver : MonoBehaviour
         // Else, target is not out of reach. Apply FABRIK.
         else
         {
-            Debug.Log("FABRIK");
+            // Debug.Log("FABRIK");
             // ----- START of FABRIK Algorithm -----
             for (int iter = 0; iter < iterations; iter++)
             {
@@ -136,7 +146,8 @@ public class IKSolver : MonoBehaviour
             // Rotate all bones to face their child bone, except for the end effector
             if (i != mEndIndex)
             {
-                boneTransforms[i].rotation = Quaternion.LookRotation((mPositions[i + 1] - mPositions[i]).normalized);
+                Vector3 dir = (mPositions[i + 1] - mPositions[i]).normalized;
+                boneTransforms[i].localRotation = Quaternion.LookRotation(dir);
             }
         }
     }
