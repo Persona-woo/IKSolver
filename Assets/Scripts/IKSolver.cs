@@ -23,12 +23,11 @@ public class IKSolver : MonoBehaviour
 
     private Transform[] mBindPoses;
     private Vector3[] mPositions; // copy of bone positions
-    private Quaternion[] mRotations; // array of bind pose rotations
+    private Quaternion[] mBindPoseLocalRots; // bind pose local rotations
+    private Vector3[] mBindPoseLocalDirs; // bind pose directions from each bone to their child in local space
     private int mEndIndex; // index of end effector
     private float[] mBoneLengths; // length of each joint (in other words, distances between each joint to its next joint)
     private float mTotalLength = 0.0f; // total length of IK chain
-
-
 
     void Awake()
     {
@@ -49,17 +48,26 @@ public class IKSolver : MonoBehaviour
         mEndIndex = count - 1;
         mBindPoses = new Transform[count];
         mPositions = new Vector3[count];
-        mRotations = new Quaternion[count];
         mBoneLengths = new float[count];
+
+        mBindPoseLocalRots = new Quaternion[count];
+        mBindPoseLocalDirs = new Vector3[count];
 
         for (int i = 0; i < count; i++)
         {
             mBindPoses[i] = boneTransforms[i];
-            mRotations[i] = boneTransforms[i].rotation;
+
+            mBindPoseLocalRots[i] = boneTransforms[i].localRotation;
+
             if (i != mEndIndex)
             {
                 mBoneLengths[i] = (boneTransforms[i + 1].position - boneTransforms[i].position).magnitude;
                 mTotalLength += mBoneLengths[i];
+                mBindPoseLocalDirs[i] = boneTransforms[i + 1].localPosition.normalized;
+            }
+            else
+            {
+                mBindPoseLocalDirs[i] = Vector3.zero;
             }
         }
     }
@@ -89,7 +97,7 @@ public class IKSolver : MonoBehaviour
             {
                 Vector3 d = (mPositions[i + 1] - mPositions[i]).normalized;
                 Debug.DrawLine(mPositions[i], mPositions[i + 1], Color.yellow);
-                Debug.DrawLine(mPositions[i], mPositions[i] + d * 0.1f, Color.green);
+                // Debug.DrawLine(mPositions[i], mPositions[i] + d * 0.1f, Color.green);
             }
         }
 
@@ -142,17 +150,35 @@ public class IKSolver : MonoBehaviour
             }
             // ----- END of FABRIK Algorithm -----
         }
+
         // Apply final transforms to bone transforms
+        boneTransforms[0].position = mPositions[0];
+
+        // For each bone, rotate so that it points to its child's pos
         for (int i = 0; i < boneTransforms.Length; i++)
         {
-            boneTransforms[i].position = mPositions[i];
-            // Rotate all bones to face their child bone, except for the end effector
-            if (i != mEndIndex)
+            if (i == mEndIndex)
             {
-                Vector3 dir = (mPositions[i + 1] - mPositions[i]).normalized;
-                Quaternion axisFix = Quaternion.FromToRotation(Vector3.forward, Vector3.up);
-                boneTransforms[i].rotation = Quaternion.LookRotation(dir) * axisFix;
+                break; // end effector has no child to aim at
+            } 
+
+            Vector3 desiredWorldDir = (mPositions[i + 1] - mPositions[i]).normalized; // world space direction to child
+
+            Vector3 desiredLocalDir = desiredWorldDir; 
+            if (boneTransforms[i].parent != null)
+            {
+                // convert direction into bone's local space
+                desiredLocalDir = boneTransforms[i].parent.InverseTransformDirection(desiredWorldDir);
             }
+
+            if (mBindPoseLocalDirs[i].sqrMagnitude < float.MinValue)
+            {
+                Debug.Log("IK Error: Bind pose rotation for bone index " + i + " is invalid.");
+                continue;
+            }
+
+            Quaternion rot = Quaternion.FromToRotation(mBindPoseLocalDirs[i], desiredLocalDir);
+            boneTransforms[i].localRotation = rot * mBindPoseLocalRots[i]; // apply rotation towards child onto bind pose rotation
         }
     }
 }
