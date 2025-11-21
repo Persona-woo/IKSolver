@@ -27,7 +27,8 @@ public class IKSolver : MonoBehaviour
     private int mEndIndex; // index of end effector
     private float[] mBoneLengths; // length of each joint (in other words, distances between each joint to its next joint)
     private float mTotalLength = 0.0f; // total length of IK chain
-    
+
+
 
     void Awake()
     {
@@ -86,7 +87,9 @@ public class IKSolver : MonoBehaviour
             // If setting is on, draw debug line
             if (debug_draw && i < boneTransforms.Length - 1)
             {
+                Vector3 d = (mPositions[i + 1] - mPositions[i]).normalized;
                 Debug.DrawLine(mPositions[i], mPositions[i + 1], Color.yellow);
+                Debug.DrawLine(mPositions[i], mPositions[i] + d * 0.1f, Color.green);
             }
         }
 
@@ -147,7 +150,8 @@ public class IKSolver : MonoBehaviour
             if (i != mEndIndex)
             {
                 Vector3 dir = (mPositions[i + 1] - mPositions[i]).normalized;
-                boneTransforms[i].localRotation = Quaternion.LookRotation(dir);
+                Quaternion axisFix = Quaternion.FromToRotation(Vector3.forward, Vector3.up);
+                boneTransforms[i].rotation = Quaternion.LookRotation(dir) * axisFix;
             }
         }
     }
