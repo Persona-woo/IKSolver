@@ -151,6 +151,35 @@ public class IKSolver : MonoBehaviour
             // ----- END of FABRIK Algorithm -----
         }
 
+        // Adjust middle joint(s) to aim towards pole vector
+        if (boneTransforms.Length >= 3)
+        {
+            for (int i = 1; i < mEndIndex; i++)
+            {
+                Vector3 rootPos = mPositions[i - 1];
+                Vector3 jointPos = mPositions[i];
+                Vector3 childPos = mPositions[i + 1];
+
+                // Axis of limb
+                Vector3 hingeDir = (childPos - rootPos).normalized;
+
+                // Pole projected onto hinge plane
+                Vector3 projectedPole =
+                    Vector3.ProjectOnPlane(pole.position - rootPos, hingeDir).normalized;
+
+                // Joint projected onto same plane
+                Vector3 projectedJoint =
+                    Vector3.ProjectOnPlane(jointPos - rootPos, hingeDir).normalized;
+
+                float angle = Vector3.SignedAngle(projectedJoint, projectedPole, hingeDir);
+
+                Quaternion rot = Quaternion.AngleAxis(angle, hingeDir);
+
+                // Apply rotation to joint
+                mPositions[i] = rootPos + rot * (jointPos - rootPos);
+            }
+        }
+
         // Apply final transforms to bone transforms
         boneTransforms[0].position = mPositions[0];
 
