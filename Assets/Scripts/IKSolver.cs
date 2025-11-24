@@ -1,13 +1,17 @@
+using System.Runtime.CompilerServices;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
+using System.Collections.Generic;
+using UnityEngine.Rendering;
 
 [System.Serializable]
 public struct IKLimbs
 {
-    [Header("Chain")]
-    [Tooltip("Bones assigned from root (e.g. thigh) to end effector (e.g. foot).")]
-    public Transform[] boneTransforms; // length must be >= 2
+    [Header("Bones")]
+    [Tooltip("Root bone of chain (e.g. shoulder) and end effector (e.g. hand).")]
+    public Transform rootBone;
+    public Transform endEffector;
 
     [Header("Targets")]
     [Tooltip("Target that end effector should reach.")]
@@ -15,6 +19,7 @@ public struct IKLimbs
     [Tooltip("Pole is optional but recommended for knee/elbow joints.")]
     public Transform pole; // world-space knee/elbow direction helper (optional)
 
+    [HideInInspector] public Transform[] boneTransforms; // length must be >= 2
     [HideInInspector] public Transform[] mBindPoses;
     [HideInInspector] public Vector3[] mPositions; // copy of bone positions
     [HideInInspector] public Quaternion[] mBindPoseLocalRots; // bind pose local rotations
@@ -26,7 +31,6 @@ public struct IKLimbs
 
 public class IKSolver : MonoBehaviour
 {
-
     public IKLimbs[] limbs;
 
     [Header("Settings")]
@@ -48,6 +52,25 @@ public class IKSolver : MonoBehaviour
 
         for (int b = 0; b < numLimbs; b++)
         {
+            if (limbs[b].rootBone == null || limbs[b].endEffector == null)
+            {
+                Debug.LogError("IK Error: No root/end effector assigned for limb " + b + ".");
+                return;
+            }
+            List<Transform> chain = new List<Transform>();
+            Transform thisBone = limbs[b].endEffector;
+            while(thisBone != null)
+            {
+                chain.Add(thisBone);
+                if (thisBone == limbs[b].rootBone)
+                {
+                    break;
+                }
+                thisBone = thisBone.parent;
+            }
+            chain.Reverse();
+
+            limbs[b].boneTransforms = chain.ToArray();
             Transform[] bones = limbs[b].boneTransforms;
             int numBones = bones.Length;
 
@@ -57,11 +80,6 @@ public class IKSolver : MonoBehaviour
                 Debug.LogError("IK Error: IK chain index " + b + " needs at least 2 bones in chain.");
                 return;
             }
-            if (limbs[b].target == null)
-            {
-                Debug.LogError("IK Error: No target set for IK chain index " + b + ".");
-                return;
-            }
 
             limbs[b].mEndIndex = numBones - 1;
             limbs[b].mBindPoses = new Transform[numBones];
@@ -69,6 +87,22 @@ public class IKSolver : MonoBehaviour
             limbs[b].mBoneLengths = new float[numBones];
             limbs[b].mBindPoseLocalRots = new Quaternion[numBones];
             limbs[b].mBindPoseLocalDirs = new Vector3[numBones];
+
+            // If no target set, create one at endEffector's transform
+            if (limbs[b].target == null)
+            {
+                GameObject autoTarget = new GameObject(bones[limbs[b].mEndIndex].name + "_IKTarget");
+                autoTarget.transform.position = limbs[b].endEffector.position;
+                autoTarget.transform.rotation = limbs[b].endEffector.rotation;
+
+                autoTarget.transform.SetParent(this.transform); // parent target under solver
+                limbs[b].target = autoTarget.transform;
+            }
+            // If no pole set, create one for each middle joint
+            if (limbs[b].pole == null && bones.Length >= 3)
+            {
+
+            }
 
             for (int i = 0; i < numBones; i++)
             {
