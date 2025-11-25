@@ -41,16 +41,18 @@ public class IKSolver : MonoBehaviour
     [Tooltip("Turn on debug drawing of IK chain.")]
     [SerializeField] bool debug_draw = true;
 
+    [HideInInspector] public int mNumLimbs; // number of limbs (can be passed into LegStepper)
+
     void Awake()
     {
-        int numLimbs = limbs.Length;
-        if (numLimbs == 0)
+        mNumLimbs = limbs.Length;
+        if (mNumLimbs == 0)
         {
             Debug.LogError("IK Error: No IK limbs assigned.");
             return;
         }
 
-        for (int b = 0; b < numLimbs; b++)
+        for (int b = 0; b < mNumLimbs; b++)
         {
             if (limbs[b].rootBone == null || limbs[b].endEffector == null)
             {

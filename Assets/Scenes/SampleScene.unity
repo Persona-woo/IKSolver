@@ -417,6 +417,11 @@ MonoBehaviour:
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
   m_SoftShadowQuality: 1
+--- !u!4 &484982309 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4436805663696350335, guid: b858080099ca35242921f893a7661a84, type: 3}
+  m_PrefabInstance: {fileID: 1519833697}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &572673046 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -4907449309954517708, guid: b858080099ca35242921f893a7661a84, type: 3}
@@ -864,6 +869,23 @@ MonoBehaviour:
   iterations: 12
   tolerance: 0.5
   debug_draw: 1
+  mNumLimbs: 0
+--- !u!114 &1195987995
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1195987992}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 03f0ab5e4444db44bbadabb78b6c2e98, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  root: {fileID: 484982309}
+  threshold: 0.2
+  strideSpeed: 0.5
+  strideHeight: 0
 --- !u!1 &1369142835
 GameObject:
   m_ObjectHideFlags: 0
@@ -882,7 +904,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1369142836
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -1070,6 +1092,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b858080099ca35242921f893a7661a84, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1195987993}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: b858080099ca35242921f893a7661a84, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1195987995}
   m_SourcePrefab: {fileID: 100100000, guid: b858080099ca35242921f893a7661a84, type: 3}
 --- !u!1 &1977108711
 GameObject:
