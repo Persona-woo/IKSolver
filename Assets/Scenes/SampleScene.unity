@@ -883,7 +883,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   root: {fileID: 484982309}
-  threshold: 0.2
+  threshold: 0.3
   strideSpeed: 0.5
   strideHeight: 0
 --- !u!1 &1369142835
