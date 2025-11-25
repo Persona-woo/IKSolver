@@ -837,7 +837,7 @@ MonoBehaviour:
   - rootBone: {fileID: 189849904}
     endEffector: {fileID: 1378125120}
     target: {fileID: 0}
-    pole: {fileID: 1143832414}
+    pole: {fileID: 0}
     boneTransforms:
     - {fileID: 189849904}
     - {fileID: 1440759083}
@@ -853,7 +853,7 @@ MonoBehaviour:
   - rootBone: {fileID: 1128149519}
     endEffector: {fileID: 847584717}
     target: {fileID: 602959189}
-    pole: {fileID: 1977108712}
+    pole: {fileID: 0}
     boneTransforms:
     - {fileID: 1128149519}
     - {fileID: 917960654}

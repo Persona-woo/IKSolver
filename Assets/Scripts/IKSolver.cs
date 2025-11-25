@@ -103,7 +103,42 @@ public class IKSolver : MonoBehaviour
             // If no pole set, create one for each middle joint
             if (limbs[b].pole == null && bones.Length >= 3)
             {
+                GameObject autoPole = new GameObject(bones[1].name + "_IKPole");
 
+               
+                Vector3 rootPos = bones[0].position;
+                Vector3 midPos = bones[1].position;
+                Vector3 endPos = bones[numBones - 1].position;
+
+                // Vector  root to end point
+                Vector3 rootToEnd = endPos - rootPos;
+                // Vector root to the middle joint
+                Vector3 rootToMid = midPos - rootPos;
+
+                // Find the point on the root-to-end line closest to the middle joint
+                Vector3 projectedMid = rootPos + Vector3.Project(rootToMid, rootToEnd);
+
+                // The direction from the projected point to the actual middle joint gives us the bend direction
+                Vector3 bendDir = (midPos - projectedMid).normalized;
+
+                // If the limb is perfectly straight, then the direction is zero. set default
+                if (bendDir.sqrMagnitude == 0)
+                {
+                    // Default to the root bone's forward direction and transformed to world space
+                    bendDir = bones[0].TransformDirection(Vector3.forward);
+                }
+                float limbLength = 0;
+                for(int i = 0; i < numBones - 1; i++)
+                {
+                    limbLength += (bones[i+1].position - bones[i].position).magnitude;
+                }
+
+                
+                float poleDist = limbLength * 0.5f;
+                autoPole.transform.position = midPos + bendDir * poleDist;
+
+                autoPole.transform.SetParent(this.transform);
+                limbs[b].pole = autoPole.transform;
             }
 
             for (int i = 0; i < numBones; i++)
