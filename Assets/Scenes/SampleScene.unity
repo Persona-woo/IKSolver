@@ -852,7 +852,7 @@ MonoBehaviour:
     mTotalLength: 0
   - rootBone: {fileID: 1128149519}
     endEffector: {fileID: 847584717}
-    target: {fileID: 602959189}
+    target: {fileID: 0}
     pole: {fileID: 0}
     boneTransforms:
     - {fileID: 1128149519}
@@ -883,9 +883,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   root: {fileID: 484982309}
-  threshold: 0.3
-  strideSpeed: 0.5
-  strideHeight: 0
+  threshold: 0.2
+  strideSpeed: 2
+  strideHeight: 0.25
 --- !u!1 &1369142835
 GameObject:
   m_ObjectHideFlags: 0
@@ -904,7 +904,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!135 &1369142836
 SphereCollider:
   m_ObjectHideFlags: 0

@@ -42,6 +42,8 @@ public class IKSolver : MonoBehaviour
     [SerializeField] bool debug_draw = true;
 
     [HideInInspector] public int mNumLimbs; // number of limbs (can be passed into LegStepper)
+    private Vector3[] mInitialPoleOffsets; // Store the initial offset of the pole from the end effector
+    private bool mPolesInitialized = false;
 
     void Awake()
     {
@@ -96,7 +98,7 @@ public class IKSolver : MonoBehaviour
                 GameObject autoTarget = new GameObject(bones[limbs[b].mEndIndex].name + "_IKTarget");
                 autoTarget.transform.position = limbs[b].endEffector.position;
                 autoTarget.transform.rotation = limbs[b].endEffector.rotation;
-
+                Debug.Log("IK Warning: No target assigned for limb " + b + ". Created auto-target at end effector position.");
                 autoTarget.transform.SetParent(this.transform); // parent target under solver
                 limbs[b].target = autoTarget.transform;
             }
@@ -164,12 +166,55 @@ public class IKSolver : MonoBehaviour
 
     void LateUpdate()
     {
+        // This check ensures we only calculate offsets after LegStepper has created its targets
+        if (!mPolesInitialized)
+        {
+            InitializePoleOffsets();
+        }
+
+        // Dynamically update pole positions
+        if (mPolesInitialized)
+        {
+            LegStepper stepper = GetComponent<LegStepper>();
+            if (stepper != null)
+            {
+                for (int i = 0; i < mNumLimbs; i++)
+                {
+                    if (limbs[i].pole != null && stepper.GetLegTarget(i) != null)
+                    {
+                        // Move the pole to maintain its initial offset from the moving leg target
+                        limbs[i].pole.position = stepper.GetLegTarget(i).transform.position + mInitialPoleOffsets[i];
+                    }
+                }
+            }
+        }
+
         for (int i = 0; i < limbs.Length; i++)
         {
             if (limbs[i].target != null)
             {
                 DoIK(i);
             }
+        }
+    }
+
+    private void InitializePoleOffsets()
+    {
+        LegStepper stepper = GetComponent<LegStepper>();
+        // Ensure LegStepper has finished its Start() method and created the targets
+        if (stepper != null && stepper.IsInitialized())
+        {
+            mInitialPoleOffsets = new Vector3[mNumLimbs];
+            for (int i = 0; i < mNumLimbs; i++)
+            {
+                if (limbs[i].pole != null)
+                {
+                    // Calculate and store the initial world-space offset 
+                    // between the pole and the leg's resting target position.
+                    mInitialPoleOffsets[i] = limbs[i].pole.position - stepper.GetLegTarget(i).transform.position;
+                }
+            }
+            mPolesInitialized = true;
         }
     }
 
