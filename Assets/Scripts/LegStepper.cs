@@ -49,6 +49,9 @@ public class LegStepper : MonoBehaviour
             
             mLegTargets[i] = target;
 
+            // TODO: hardcoded random offset for limbs, would lose it's effect once spider moves too fast and "jumps"
+            mSolver.limbs[i].target.position += new Vector3(Random.Range(-threshold, threshold), 0, Random.Range(-threshold, threshold));
+
             mCurrentPos[i] = mSolver.limbs[i].target.position;
             mStepping[i] = false;
             mStepProgress[i] = 0f; // Initial progress is 0
@@ -64,7 +67,7 @@ public class LegStepper : MonoBehaviour
             {
                 mStepping[i] = true;
                 // Steps in opposite direction towards threshold (eg: when walking we step forward rather than right below us)
-                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold;
+                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.99f;
                 // The starting point of the step is the current fixed position of the foot
                 // Do NOT update mCurrentPos here. It serves as the true start of the Lerp.
             }
