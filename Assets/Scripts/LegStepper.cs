@@ -60,10 +60,11 @@ public class LegStepper : MonoBehaviour
     {
         for (int i = 0; i < mNumLimbs; i++)
         {
-            if ((mLegTargets[i].transform.position - mCurrentPos[i]).magnitude > threshold && !mStepping[i])
+            if ((mLegTargets[i].transform.position - mCurrentPos[i]).magnitude > threshold)
             {
                 mStepping[i] = true;
-                mTargetPos[i] = mLegTargets[i].transform.position;
+                // Steps in opposite direction towards threshold (eg: when walking we step forward rather than right below us)
+                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold;
                 // The starting point of the step is the current fixed position of the foot
                 // Do NOT update mCurrentPos here. It serves as the true start of the Lerp.
             }
