@@ -12,6 +12,11 @@ public class LegStepper : MonoBehaviour
     [Tooltip("How high each leg raises with each step.")]
     public float strideHeight;
 
+    [Tooltip("Tripod group index per leg. 0 = first tripod, 1 = second tripod.")]
+    public int[] legGroup;
+
+    private int mCurrentGaitPhase = 0; //Phase 0 or 1
+    
     private IKSolver mSolver;
     private GameObject[] mLegTargets;
     private Vector3[] mCurrentPos; // original position of each leg (before starting a step)
@@ -30,6 +35,21 @@ public class LegStepper : MonoBehaviour
             return;
         }
         mNumLimbs = mSolver.mNumLimbs;
+        
+        // Ensure legGroup has a valid size; if not, auto-generate a tripod pattern
+        if (legGroup == null || legGroup.Length != mNumLimbs)
+        {
+            legGroup = new int[mNumLimbs];
+
+            // Default tripod: legs 0,2,4 are group 0; legs 1,3,5 are group 1
+            for (int i = 0; i < mNumLimbs; i++)
+            {
+                legGroup[i] = i % 2; // 0,1,0,1,0,1
+            }
+
+            //Debug.LogWarning("legGroup array size did not match mNumLimbs. Generated default tripod pattern (0,1,0,1,0,1). Adjust in inspector if needed.");
+        }
+        
         mLegTargets = new GameObject[mNumLimbs];
         mCurrentPos = new Vector3[mNumLimbs];
         mTargetPos = new Vector3[mNumLimbs];
@@ -61,16 +81,20 @@ public class LegStepper : MonoBehaviour
 
     void Update()
     {
+        if (!mIsInitialized) return;
+        
+        TryStartTripodStep();
+        
         for (int i = 0; i < mNumLimbs; i++)
         {
-            if ((mLegTargets[i].transform.position - mCurrentPos[i]).magnitude > threshold)
-            {
-                mStepping[i] = true;
-                // Steps in opposite direction towards threshold (eg: when walking we step forward rather than right below us)
-                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.99f;
-                // The starting point of the step is the current fixed position of the foot
-                // Do NOT update mCurrentPos here. It serves as the true start of the Lerp.
-            }
+            // if ((mLegTargets[i].transform.position - mCurrentPos[i]).magnitude > threshold)
+            // {
+            //     mStepping[i] = true;
+            //     // Steps in opposite direction towards threshold (eg: when walking we step forward rather than right below us)
+            //     mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.99f;
+            //     // The starting point of the step is the current fixed position of the foot
+            //     // Do NOT update mCurrentPos here. It serves as the true start of the Lerp.
+            // }
 
             if (mStepping[i])
             {
@@ -103,6 +127,23 @@ public class LegStepper : MonoBehaviour
                 mSolver.limbs[i].target.position = mCurrentPos[i];
             }
         }
+        
+        //If no legs are stepping anymore, flip to the other tripod group
+        bool anyStillStepping = false;
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            if (mStepping[i])
+            {
+                anyStillStepping = true;
+                break;
+            }
+        }
+        
+        if (!anyStillStepping)
+        {
+            mCurrentGaitPhase = 1 - mCurrentGaitPhase; // 0 -> 1, 1 -> 0
+        }
+        
     }
 
     public bool IsInitialized()
@@ -118,4 +159,66 @@ public class LegStepper : MonoBehaviour
         }
         return null;
     }
+    
+    /// <summary>
+    /// Checks if the current tripod (mCurrentGaitPhase) should step.
+    /// If yes, starts a step for all three legs in that tripod.
+    /// </summary>
+    private void TryStartTripodStep()
+    {
+        // Only start a new tripod if no legs are currently stepping
+        bool anyStepping = false;
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            if (mStepping[i])
+            {
+                anyStepping = true;
+                break;
+            }
+        }
+
+        if (anyStepping)
+            return;
+
+        // Check if this tripod group needs a step (any leg too far from its target)
+        bool groupNeedsStep = false;
+        const float epsilon = 0.0001f;
+
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            if (legGroup[i] != mCurrentGaitPhase)
+                continue;
+
+            float dist = (mLegTargets[i].transform.position - mCurrentPos[i]).magnitude;
+            if (dist > threshold)
+            {
+                groupNeedsStep = true;
+                break;
+            }
+        }
+
+        if (!groupNeedsStep)
+            return;
+
+        // Start a step for ALL legs in this tripod group
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            if (legGroup[i] != mCurrentGaitPhase)
+                continue;
+
+            Vector3 offset = mLegTargets[i].transform.position - mCurrentPos[i];
+            Vector3 dir;
+
+            if (offset.sqrMagnitude > epsilon)
+                dir = offset.normalized;
+            else
+                dir = root != null ? root.forward : Vector3.forward;
+
+            mStepping[i] = true;
+            mStepProgress[i] = 0f;
+
+            mTargetPos[i] = mLegTargets[i].transform.position + dir * threshold * 0.99f;
+        }
+    }
+    
 }
