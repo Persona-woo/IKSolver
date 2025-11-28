@@ -3,23 +3,41 @@ using UnityEngine;
 
 public class LegStepper : MonoBehaviour
 {
+    [Header("Stepping Properties")]
     [Tooltip("Center of gravity to base leg positions on.")]
     public Transform root;
     [Tooltip("Distance away from root before leg should take a step.")]
     public float threshold;
-    [Tooltip("How fast each step is taken.")]
-    public float strideSpeed;
+    [Tooltip("The angle (in degrees) the ideal leg position can rotate before a step is triggered.")]
+    public float angleThreshold = 15f;
+    [Tooltip("The base speed of the step.")]
+    public float strideSpeed = 5f;
     [Tooltip("How high each leg raises with each step.")]
     public float strideHeight;
+
+    [Header("Dynamic Stride Speed")]
+    [Tooltip("How much the body's linear speed affects the stride speed.")]
+    public float speedToStrideSpeedMultiplier = 1.0f;
+    [Tooltip("How much the body's angular speed (deg/s) affects the stride speed.")]
+    public float angularSpeedToStrideSpeedMultiplier = 0.1f;
+    [Tooltip("The maximum speed a step can have.")]
+    public float maxStrideSpeed = 15f;
+
 
     private IKSolver mSolver;
     private GameObject[] mLegTargets;
     private Vector3[] mCurrentPos; // original position of each leg (before starting a step)
     private Vector3[] mTargetPos; // target position of each leg (as step is being taken)
+    private Vector3[] mCurrentNormals; // The last direction of the leg relative to the body
     private float[] mStepProgress; // Use a dedicated progress tracker for each leg
     private bool[] mStepping; // array of bools - true if a limb is already mid-step
+    private int[] mGaitGroup; // To group legs for alternating gait
     private int mNumLimbs;
     private bool mIsInitialized = false;
+    private Vector3 lastRootPosition;
+    private Quaternion lastRootRotation;
+    private float rootSpeed;
+    private float rootAngularSpeed;
 
     void Start()
     {
@@ -33,49 +51,78 @@ public class LegStepper : MonoBehaviour
         mLegTargets = new GameObject[mNumLimbs];
         mCurrentPos = new Vector3[mNumLimbs];
         mTargetPos = new Vector3[mNumLimbs];
+        mCurrentNormals = new Vector3[mNumLimbs];
         mStepProgress = new float[mNumLimbs]; // Initialize the progress tracker
         mStepping = new bool[mNumLimbs];
+        mGaitGroup = new int[mNumLimbs]; // Initialize gait group array
 
         for (int i = 0; i < mNumLimbs; i++)
         {
             GameObject target = new GameObject(mSolver.limbs[i].endEffector.name + "_LegStepperTarget");
-            
-            
-            target.transform.SetParent(this.transform); 
 
-           
+
+            target.transform.SetParent(this.transform);
+
+
             target.transform.localPosition = this.transform.InverseTransformPoint(mSolver.limbs[i].target.position);
             target.transform.rotation = mSolver.limbs[i].target.rotation;
-            
+
             mLegTargets[i] = target;
 
-            // TODO: hardcoded random offset for limbs, would lose it's effect once spider moves too fast and "jumps"
-            mSolver.limbs[i].target.position += new Vector3(Random.Range(-threshold, threshold), 0, Random.Range(-threshold, threshold));
+            // Assign to a gait group (e.g., odd/even)
+            mGaitGroup[i] = i % 2;
+
+            // Add a small random offset to the initial position to break sync
+            mSolver.limbs[i].target.position += new Vector3(Random.Range(-threshold * 0.1f, threshold * 0.1f), 0, Random.Range(-threshold * 0.1f, threshold * 0.1f));
 
             mCurrentPos[i] = mSolver.limbs[i].target.position;
+            mCurrentNormals[i] = (mLegTargets[i].transform.position - root.position).normalized;
             mStepping[i] = false;
             mStepProgress[i] = 0f; // Initial progress is 0
         }
         mIsInitialized = true;
+        lastRootPosition = root.position;
+        lastRootRotation = root.rotation;
     }
 
     void Update()
     {
+        // Calculate root's linear and angular speed
+        Vector3 rootVelocity = (root.position - lastRootPosition) / Time.deltaTime;
+        rootSpeed = new Vector2(rootVelocity.x, rootVelocity.z).magnitude;
+        lastRootPosition = root.position;
+
+        float angleDifference = Quaternion.Angle(root.rotation, lastRootRotation);
+        rootAngularSpeed = angleDifference / Time.deltaTime;
+        lastRootRotation = root.rotation;
+
+
         for (int i = 0; i < mNumLimbs; i++)
         {
-            if ((mLegTargets[i].transform.position - mCurrentPos[i]).magnitude > threshold)
+            // Determine if this leg's group is allowed to step.
+            bool canThisGroupStep = (mGaitGroup[i] == 0 && !IsGaitGroupStepping(1)) || (mGaitGroup[i] == 1 && !IsGaitGroupStepping(0));
+
+            // Calculate distance and angle difference
+            float distance = Vector3.Distance(mLegTargets[i].transform.position, mCurrentPos[i]);
+            float angle = Vector3.Angle(mCurrentNormals[i], (mLegTargets[i].transform.position - root.position).normalized);
+
+            // Condition to start a step:
+            if ((distance > threshold || angle > angleThreshold) && !mStepping[i] && canThisGroupStep)
             {
                 mStepping[i] = true;
-                // Steps in opposite direction towards threshold (eg: when walking we step forward rather than right below us)
-                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.99f;
-                // The starting point of the step is the current fixed position of the foot
-                // Do NOT update mCurrentPos here. It serves as the true start of the Lerp.
+                // Target is the ideal resting spot, plus an "overshoot" in the direction of movement to create propulsion
+                mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.5f;
             }
 
             if (mStepping[i])
             {
-                // Update the progress of the step based on speed and time
-                mStepProgress[i] += strideSpeed * Time.deltaTime;
+                // Calculate the dynamic stride speed for this frame, considering both linear and angular speed
+                float linearSpeedBonus = rootSpeed * speedToStrideSpeedMultiplier;
+                float angularSpeedBonus = rootAngularSpeed * angularSpeedToStrideSpeedMultiplier;
+                float currentStrideSpeed = Mathf.Clamp(strideSpeed + linearSpeedBonus + angularSpeedBonus, strideSpeed, maxStrideSpeed);
+
+                // Update the progress of the step based on the dynamic speed and time
+                mStepProgress[i] += currentStrideSpeed * Time.deltaTime;
 
                 // Clamp progress to a 0-1 range
                 mStepProgress[i] = Mathf.Clamp01(mStepProgress[i]);
@@ -93,6 +140,7 @@ public class LegStepper : MonoBehaviour
                 {
                     mSolver.limbs[i].target.position = mTargetPos[i];
                     mCurrentPos[i] = mTargetPos[i]; // The new fixed position is the target
+                    mCurrentNormals[i] = (mLegTargets[i].transform.position - root.position).normalized; // Update the normal for the new position
                     mStepProgress[i] = 0f; // Reset progress
                     mStepping[i] = false;
                 }
@@ -103,6 +151,19 @@ public class LegStepper : MonoBehaviour
                 mSolver.limbs[i].target.position = mCurrentPos[i];
             }
         }
+    }
+
+    // Checks if any leg within a specific gait group is currently stepping
+    private bool IsGaitGroupStepping(int group)
+    {
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            if (mGaitGroup[i] == group && mStepping[i])
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public bool IsInitialized()
