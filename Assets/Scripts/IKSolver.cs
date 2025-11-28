@@ -193,7 +193,7 @@ public class IKSolver : MonoBehaviour
         {
             if (limbs[i].target != null)
             {
-                DoIK(i);
+                DoIK(i); //Change to DoIK_CCD(i) if using CCD algorithm, default is FABRIK
             }
         }
     }
@@ -355,4 +355,156 @@ public class IKSolver : MonoBehaviour
             boneTransforms[i].localRotation = rot * limbs[idx].mBindPoseLocalRots[i]; // apply rotation towards child onto bind pose rotation
         }
     }
+    
+    void DoIK_CCD(int idx)
+    {
+        Transform[] bones = limbs[idx].boneTransforms;
+        Transform target = limbs[idx].target;
+        int endIndex = limbs[idx].mEndIndex;
+
+        if (bones == null || bones.Length < 2 || target == null)
+            return;
+
+        // Copy current world positions into mPositions
+        for (int i = 0; i < bones.Length; i++)
+        {
+            limbs[idx].mPositions[i] = bones[i].position;
+
+            if (debug_draw && i < bones.Length - 1)
+            {
+                Debug.DrawLine(limbs[idx].mPositions[i],
+                               limbs[idx].mPositions[i + 1],
+                               Color.cyan);
+            }
+        }
+
+        Vector3 rootPos = limbs[idx].mPositions[0];
+        float sqrTolerance = tolerance * tolerance;
+
+        // If target is out of reach, just stretch chain towards it, same as FABRIK
+        if (Vector3.Distance(rootPos, target.position) > limbs[idx].mTotalLength)
+        {
+            Vector3 dir = (target.position - rootPos).normalized;
+            limbs[idx].mPositions[0] = rootPos;
+
+            for (int i = 1; i < bones.Length; i++)
+            {
+                limbs[idx].mPositions[i] =
+                    limbs[idx].mPositions[i - 1] + dir * limbs[idx].mBoneLengths[i - 1];
+            }
+        }
+        else
+        {
+            // CCD iterations
+            for (int iter = 0; iter < iterations; iter++)
+            {
+                // Go from end towards root
+                for (int i = endIndex - 1; i >= 0; i--)
+                {
+                    Vector3 jointPos = limbs[idx].mPositions[i];
+                    Vector3 endPos = limbs[idx].mPositions[endIndex];
+                    Vector3 targetPos = target.position;
+
+                    Vector3 toEnd = endPos - jointPos;
+                    Vector3 toTarget = targetPos - jointPos;
+
+                    if (toEnd.sqrMagnitude < 1e-8f || toTarget.sqrMagnitude < 1e-8f)
+                        continue;
+
+                    toEnd.Normalize();
+                    toTarget.Normalize();
+
+                    float cosAngle = Mathf.Clamp(Vector3.Dot(toEnd, toTarget), -1f, 1f);
+                    float angleDeg = Mathf.Acos(cosAngle) * Mathf.Rad2Deg;
+
+                    if (angleDeg < 0.001f)
+                        continue;
+
+                    Vector3 axis = Vector3.Cross(toEnd, toTarget);
+                    if (axis.sqrMagnitude < 1e-8f)
+                        continue;
+                    axis.Normalize();
+
+                    Quaternion rot = Quaternion.AngleAxis(angleDeg, axis);
+
+                    // Rotate all bones after this joint around this joint
+                    for (int j = i + 1; j <= endIndex; j++)
+                    {
+                        Vector3 offset = limbs[idx].mPositions[j] - jointPos;
+                        limbs[idx].mPositions[j] = jointPos + rot * offset;
+                    }
+                }
+
+                // Keep root fixed
+                limbs[idx].mPositions[0] = rootPos;
+
+                // Check convergence
+                if ((limbs[idx].mPositions[endIndex] - target.position).sqrMagnitude < sqrTolerance)
+                    break;
+            }
+        }
+
+        // Pole alignment (same idea as your FABRIK solver)
+        if (bones.Length >= 3 && limbs[idx].pole != null)
+        {
+            for (int i = 1; i < endIndex; i++)
+            {
+                Vector3 prevPos = limbs[idx].mPositions[i - 1];
+                Vector3 jointPos = limbs[idx].mPositions[i];
+                Vector3 nextPos = limbs[idx].mPositions[i + 1];
+
+                Vector3 hingeDir = (nextPos - prevPos).normalized;
+
+                Vector3 projectedPole =
+                    Vector3.ProjectOnPlane(limbs[idx].pole.position - prevPos, hingeDir).normalized;
+
+                Vector3 projectedJoint =
+                    Vector3.ProjectOnPlane(jointPos - prevPos, hingeDir).normalized;
+
+                float angle = Vector3.SignedAngle(projectedJoint, projectedPole, hingeDir);
+                Quaternion rot = Quaternion.AngleAxis(angle, hingeDir);
+
+                // Rotate joint and all children around prevPos
+                for (int j = i; j <= endIndex; j++)
+                {
+                    Vector3 offset = limbs[idx].mPositions[j] - prevPos;
+                    limbs[idx].mPositions[j] = prevPos + rot * offset;
+                }
+            }
+        }
+
+        // Apply final transforms to bones, reusing your existing logic
+
+        // Set root position
+        bones[0].position = limbs[idx].mPositions[0];
+
+        // Orient each bone to point at its child
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (i == endIndex)
+                break; // end effector has no child
+
+            Vector3 desiredWorldDir =
+                (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized;
+
+            Vector3 desiredLocalDir = desiredWorldDir;
+            if (bones[i].parent != null)
+            {
+                desiredLocalDir =
+                    bones[i].parent.InverseTransformDirection(desiredWorldDir);
+            }
+
+            if (limbs[idx].mBindPoseLocalDirs[i].sqrMagnitude < float.Epsilon)
+            {
+                Debug.Log("IK Error: Bind pose rotation for bone index " + i + " is invalid.");
+                continue;
+            }
+
+            Quaternion rotToChild =
+                Quaternion.FromToRotation(limbs[idx].mBindPoseLocalDirs[i], desiredLocalDir);
+
+            bones[i].localRotation = rotToChild * limbs[idx].mBindPoseLocalRots[i];
+        }
+    }
+
 }
