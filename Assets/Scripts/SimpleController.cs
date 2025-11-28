@@ -13,15 +13,11 @@ public class SimpleController : MonoBehaviour
     void Update()
     {
         // --- Movement ---
-        // Get input from WASD keys
+        
         float horizontalInput = Input.GetAxis("Horizontal"); // A/D keys
         float verticalInput = Input.GetAxis("Vertical");   // W/S keys
-
-        // Create a direction vector based on the input
-        // We use transform.forward and transform.right to ensure movement is relative to the object's orientation
         Vector3 moveDirection = (transform.forward * verticalInput + transform.right * horizontalInput).normalized;
 
-        // Move the object
         transform.position += moveDirection * moveSpeed * Time.deltaTime;   
 
         // --- Rotation ---
