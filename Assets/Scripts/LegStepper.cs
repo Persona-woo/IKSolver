@@ -23,8 +23,19 @@ public class LegStepper : MonoBehaviour
     [Tooltip("The maximum speed a step can have.")]
     public float maxStrideSpeed = 15f;
 
+    [Header("Ground Adaptation")]
+    [Tooltip("The layer mask to consider as ground.")]
+    public LayerMask groundLayer;
+    [Tooltip("How far above the root to start the ground-detecting raycast for the feet.")]
+    public float raycastOriginOffset = 1.0f;
+    [Tooltip("How far down the ray should check for ground.")]
+    public float raycastDistance = 2.0f;
+    [Tooltip("How quickly the body adapts its height and rotation to the ground.")]
+    public float bodyAdaptationSpeed = 5.0f;
+
 
     private IKSolver mSolver;
+    private SimpleController controller; // Reference to the controller
     private GameObject[] mLegTargets;
     private Vector3[] mCurrentPos; // original position of each leg (before starting a step)
     private Vector3[] mTargetPos; // target position of each leg (as step is being taken)
@@ -34,126 +45,135 @@ public class LegStepper : MonoBehaviour
     private int[] mGaitGroup; // To group legs for alternating gait
     private int mNumLimbs;
     private bool mIsInitialized = false;
-    private Vector3 lastRootPosition;
-    private Quaternion lastRootRotation;
-    private float rootSpeed;
-    private float rootAngularSpeed;
+    private Vector3[] mIdealLegPositions; // Store the local positions of leg targets
 
     void Start()
     {
         mSolver = GetComponent<IKSolver>();
-        if (mSolver == null)
+        controller = GetComponent<SimpleController>(); // Get the controller component
+
+        if (mSolver == null || controller == null)
         {
-            Debug.Log("IK Solver not found. Object must have IK Solver attached to it.");
+            Debug.LogError("IK Solver or SimpleController not found on this GameObject.");
             return;
         }
+
         mNumLimbs = mSolver.mNumLimbs;
         mLegTargets = new GameObject[mNumLimbs];
         mCurrentPos = new Vector3[mNumLimbs];
         mTargetPos = new Vector3[mNumLimbs];
         mCurrentNormals = new Vector3[mNumLimbs];
-        mStepProgress = new float[mNumLimbs]; // Initialize the progress tracker
+        mStepProgress = new float[mNumLimbs];
         mStepping = new bool[mNumLimbs];
-        mGaitGroup = new int[mNumLimbs]; // Initialize gait group array
+        mGaitGroup = new int[mNumLimbs];
+        mIdealLegPositions = new Vector3[mNumLimbs];
 
         for (int i = 0; i < mNumLimbs; i++)
         {
             GameObject target = new GameObject(mSolver.limbs[i].endEffector.name + "_LegStepperTarget");
-
-
             target.transform.SetParent(this.transform);
-
-
             target.transform.localPosition = this.transform.InverseTransformPoint(mSolver.limbs[i].target.position);
+            mIdealLegPositions[i] = target.transform.localPosition;
             target.transform.rotation = mSolver.limbs[i].target.rotation;
-
             mLegTargets[i] = target;
-
-            // Assign to a gait group (e.g., odd/even)
             mGaitGroup[i] = i % 2;
 
-            // Add a small random offset to the initial position to break sync
             mSolver.limbs[i].target.position += new Vector3(Random.Range(-threshold * 0.1f, threshold * 0.1f), 0, Random.Range(-threshold * 0.1f, threshold * 0.1f));
-
             mCurrentPos[i] = mSolver.limbs[i].target.position;
             mCurrentNormals[i] = (mLegTargets[i].transform.position - root.position).normalized;
             mStepping[i] = false;
-            mStepProgress[i] = 0f; // Initial progress is 0
+            mStepProgress[i] = 0f;
         }
         mIsInitialized = true;
-        lastRootPosition = root.position;
-        lastRootRotation = root.rotation;
     }
 
     void Update()
     {
-        // Calculate root's linear and angular speed
-        Vector3 rootVelocity = (root.position - lastRootPosition) / Time.deltaTime;
-        rootSpeed = new Vector2(rootVelocity.x, rootVelocity.z).magnitude;
-        lastRootPosition = root.position;
-
-        float angleDifference = Quaternion.Angle(root.rotation, lastRootRotation);
-        rootAngularSpeed = angleDifference / Time.deltaTime;
-        lastRootRotation = root.rotation;
-
+        // --- Ground Projection and Body Adaptation ---
+        Vector3 averageFootPosition = Vector3.zero;
+        Vector3 averageFootNormal = Vector3.zero;
+        int groundedLimbs = 0;
 
         for (int i = 0; i < mNumLimbs; i++)
         {
-            // Determine if this leg's group is allowed to step.
-            bool canThisGroupStep = (mGaitGroup[i] == 0 && !IsGaitGroupStepping(1)) || (mGaitGroup[i] == 1 && !IsGaitGroupStepping(0));
+            Vector3 idealPosition = root.TransformPoint(mIdealLegPositions[i]);
+            RaycastHit hit;
+            Vector3 rayOrigin = idealPosition + root.up * raycastOriginOffset;
+            if (Physics.Raycast(rayOrigin, -root.up, out hit, raycastDistance, groundLayer))
+            {
+                mLegTargets[i].transform.position = hit.point;
+                Debug.DrawLine(rayOrigin, hit.point, Color.green);
+                averageFootNormal += hit.normal;
+                groundedLimbs++;
+            }
+            else
+            {
+                mLegTargets[i].transform.position = idealPosition;
+                Debug.DrawLine(rayOrigin, rayOrigin - root.up * raycastDistance, Color.red);
+            }
+            averageFootPosition += mCurrentPos[i];
+        }
+        averageFootPosition /= mNumLimbs;
+        if (groundedLimbs > 0)
+        {
+            averageFootNormal /= groundedLimbs;
+        }
+        else
+        {
+            averageFootNormal = Vector3.up;
+        }
 
-            // Calculate distance and angle difference
+        // Adapt body position and rotation
+        Vector3 targetBodyPosition = new Vector3(root.position.x, averageFootPosition.y, root.position.z);
+        root.position = Vector3.Lerp(root.position, targetBodyPosition, Time.deltaTime * bodyAdaptationSpeed);
+        Quaternion targetBodyRotation = Quaternion.FromToRotation(root.up, averageFootNormal) * root.rotation;
+        root.rotation = Quaternion.Slerp(root.rotation, targetBodyRotation, Time.deltaTime * bodyAdaptationSpeed);
+
+        // --- Stepping Logic ---
+        // Use the controller's input state to determine if the body is "supposed" to be moving.
+        bool isBodyMoving = controller.HasInput;
+
+        for (int i = 0; i < mNumLimbs; i++)
+        {
+            bool canThisGroupStep = (mGaitGroup[i] == 0 && !IsGaitGroupStepping(1)) || (mGaitGroup[i] == 1 && !IsGaitGroupStepping(0));
             float distance = Vector3.Distance(mLegTargets[i].transform.position, mCurrentPos[i]);
             float angle = Vector3.Angle(mCurrentNormals[i], (mLegTargets[i].transform.position - root.position).normalized);
 
-            // Condition to start a step:
-            if ((distance > threshold || angle > angleThreshold) && !mStepping[i] && canThisGroupStep)
+            if (isBodyMoving && (distance > threshold || angle > angleThreshold) && !mStepping[i] && canThisGroupStep)
             {
                 mStepping[i] = true;
-                // Target is the ideal resting spot, plus an "overshoot" in the direction of movement to create propulsion
                 mTargetPos[i] = mLegTargets[i].transform.position + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * threshold * 0.5f;
             }
 
             if (mStepping[i])
             {
-                // Calculate the dynamic stride speed for this frame, considering both linear and angular speed
-                float linearSpeedBonus = rootSpeed * speedToStrideSpeedMultiplier;
-                float angularSpeedBonus = rootAngularSpeed * angularSpeedToStrideSpeedMultiplier;
+                // Use the intended speed from the controller for dynamic stride speed calculation
+                float linearSpeedBonus = controller.CurrentLinearSpeed * speedToStrideSpeedMultiplier;
+                float angularSpeedBonus = controller.CurrentAngularSpeed * angularSpeedToStrideSpeedMultiplier;
                 float currentStrideSpeed = Mathf.Clamp(strideSpeed + linearSpeedBonus + angularSpeedBonus, strideSpeed, maxStrideSpeed);
 
-                // Update the progress of the step based on the dynamic speed and time
                 mStepProgress[i] += currentStrideSpeed * Time.deltaTime;
-
-                // Clamp progress to a 0-1 range
                 mStepProgress[i] = Mathf.Clamp01(mStepProgress[i]);
-
-                // Perform the interpolation based on the consistent progress value
                 Vector3 newPos = Vector3.Lerp(mCurrentPos[i], mTargetPos[i], mStepProgress[i]);
-
-                // Vertical movement (height) using a sine wave for a smooth arc
                 newPos.y += Mathf.Sin(mStepProgress[i] * Mathf.PI) * strideHeight;
-
                 mSolver.limbs[i].target.position = newPos;
 
-                // Check if the step is complete
                 if (mStepProgress[i] >= 1.0f)
                 {
                     mSolver.limbs[i].target.position = mTargetPos[i];
-                    mCurrentPos[i] = mTargetPos[i]; // The new fixed position is the target
-                    mCurrentNormals[i] = (mLegTargets[i].transform.position - root.position).normalized; // Update the normal for the new position
-                    mStepProgress[i] = 0f; // Reset progress
+                    mCurrentPos[i] = mTargetPos[i];
+                    mCurrentNormals[i] = (mLegTargets[i].transform.position - root.position).normalized;
+                    mStepProgress[i] = 0f;
                     mStepping[i] = false;
                 }
             }
             else
             {
-                // If not stepping, the foot stays planted at its last position
                 mSolver.limbs[i].target.position = mCurrentPos[i];
             }
         }
     }
 
-    // Checks if any leg within a specific gait group is currently stepping
     private bool IsGaitGroupStepping(int group)
     {
         for (int i = 0; i < mNumLimbs; i++)
