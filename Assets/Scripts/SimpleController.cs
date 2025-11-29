@@ -2,8 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// A simple character controller to move the GameObject using WASD keys and rotate with Q/E.
-/// It also exposes the current input state.
+/// It also exposes the current input state and desired velocity.
 /// </summary>
+[RequireComponent(typeof(LegStepper))]
 public class SimpleController : MonoBehaviour
 {
     [Tooltip("The speed at which the object moves.")]
@@ -25,6 +26,18 @@ public class SimpleController : MonoBehaviour
     /// The current intended rotation speed based on input.
     /// </summary>
     public float CurrentAngularSpeed { get; private set; }
+
+    /// <summary>
+    /// The calculated velocity based on player input.
+    /// </summary>
+    public Vector3 Velocity { get; private set; }
+
+    private LegStepper legStepper;
+
+    void Awake()
+    {
+        legStepper = GetComponent<LegStepper>();
+    }
 
     void Update()
     {
@@ -50,11 +63,30 @@ public class SimpleController : MonoBehaviour
         CurrentLinearSpeed = moveVector.magnitude > 0 ? moveSpeed : 0f;
         CurrentAngularSpeed = Mathf.Abs(rotationInput) > 0 ? rotationSpeed : 0f;
 
-        // --- Movement Application ---
-        Vector3 moveDirection = (transform.forward * verticalInput + transform.right * horizontalInput).normalized;
-        transform.position += moveDirection * moveSpeed * Time.deltaTime;   
+        // --- Movement Calculation ---
+        // Get the body's "up" vector, which is aligned with the surface normal
+        Vector3 up = transform.up;
+        // Get the raw forward vector and project it onto the surface plane to get a pure forward direction
+        Vector3 forward = Vector3.ProjectOnPlane(transform.forward, up).normalized;
+        // Calculate the right vector using a cross product
+        Vector3 right = Vector3.Cross(up, forward);
 
-        // Apply rotation around the Y axis (upward axis)
-        transform.Rotate(Vector3.up, rotationInput * rotationSpeed * Time.deltaTime);
+        // Calculate the final move direction relative to the surface-aligned axes
+        Vector3 moveDirection = (forward * verticalInput + right * horizontalInput).normalized;
+        // Set the public Velocity property for the LegStepper to use
+        Velocity = moveDirection * moveSpeed;
+
+        // Apply rotation around the body's "up" axis
+        transform.Rotate(up, rotationInput * rotationSpeed * Time.deltaTime, Space.World);
+
+        // --- Debug Visualization ---
+        // Draw the surface normal / body up vector
+        Debug.DrawLine(transform.position, transform.position + up * 1.5f, Color.green);
+        // Draw the calculated forward direction on the surface
+        Debug.DrawLine(transform.position, transform.position + forward, Color.cyan);
+        // Draw the calculated right direction on the surface
+        Debug.DrawLine(transform.position, transform.position + right, Color.yellow);
+        // Draw the final movement direction
+        Debug.DrawLine(transform.position, transform.position + moveDirection * 2f, Color.red);
     }
 }

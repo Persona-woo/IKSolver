@@ -63,7 +63,7 @@ public class IKSolver : MonoBehaviour
             }
             List<Transform> chain = new List<Transform>();
             Transform thisBone = limbs[b].endEffector;
-            while(thisBone != null)
+            while (thisBone != null)
             {
                 chain.Add(thisBone);
                 if (thisBone == limbs[b].rootBone)
@@ -107,7 +107,7 @@ public class IKSolver : MonoBehaviour
             {
                 GameObject autoPole = new GameObject(bones[1].name + "_IKPole");
 
-               
+
                 Vector3 rootPos = bones[0].position;
                 Vector3 midPos = bones[1].position;
                 Vector3 endPos = bones[numBones - 1].position;
@@ -130,12 +130,12 @@ public class IKSolver : MonoBehaviour
                     bendDir = bones[0].TransformDirection(Vector3.forward);
                 }
                 float limbLength = 0;
-                for(int i = 0; i < numBones - 1; i++)
+                for (int i = 0; i < numBones - 1; i++)
                 {
-                    limbLength += (bones[i+1].position - bones[i].position).magnitude;
+                    limbLength += (bones[i + 1].position - bones[i].position).magnitude;
                 }
 
-                
+
                 float poleDist = limbLength * 0.5f;
                 autoPole.transform.position = midPos + bendDir * poleDist;
 
@@ -182,8 +182,10 @@ public class IKSolver : MonoBehaviour
                 {
                     if (limbs[i].pole != null && stepper.GetLegTarget(i) != null)
                     {
+                        // Transform the local offset by the body's current rotation to get the world-space offset
+                        Vector3 worldOffset = stepper.root.rotation * mInitialPoleOffsets[i];
                         // Move the pole to maintain its initial offset from the moving leg target
-                        limbs[i].pole.position = stepper.GetLegTarget(i).transform.position + mInitialPoleOffsets[i];
+                        limbs[i].pole.position = stepper.GetLegTarget(i).transform.position + worldOffset;
                     }
                 }
             }
@@ -209,9 +211,10 @@ public class IKSolver : MonoBehaviour
             {
                 if (limbs[i].pole != null)
                 {
-                    // Calculate and store the initial world-space offset 
-                    // between the pole and the leg's resting target position.
-                    mInitialPoleOffsets[i] = limbs[i].pole.position - stepper.GetLegTarget(i).transform.position;
+                    // Calculate the world-space offset
+                    Vector3 worldOffset = limbs[i].pole.position - stepper.GetLegTarget(i).transform.position;
+                    // Convert the world-space offset to a local-space offset relative to the spider's body root
+                    mInitialPoleOffsets[i] = Quaternion.Inverse(stepper.root.rotation) * worldOffset;
                 }
             }
             mPolesInitialized = true;
@@ -254,7 +257,7 @@ public class IKSolver : MonoBehaviour
             limbs[idx].mPositions[0] = rootOriginalPos; // ensure root is in its original position
             for (int i = 1; i < boneTransforms.Length; i++)
             {
-                limbs[idx].mPositions[i] = limbs[idx].mPositions[i - 1] + direction *  limbs[idx].mBoneLengths[i - 1];
+                limbs[idx].mPositions[i] = limbs[idx].mPositions[i - 1] + direction * limbs[idx].mBoneLengths[i - 1];
             }
         }
         // Else, target is not out of reach. Apply FABRIK.
@@ -334,11 +337,11 @@ public class IKSolver : MonoBehaviour
             if (i == endIndex)
             {
                 break; // end effector has no child to aim at
-            } 
+            }
 
             Vector3 desiredWorldDir = (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized; // world space direction to child
 
-            Vector3 desiredLocalDir = desiredWorldDir; 
+            Vector3 desiredLocalDir = desiredWorldDir;
             if (boneTransforms[i].parent != null)
             {
                 // convert direction into bone's local space
@@ -355,7 +358,7 @@ public class IKSolver : MonoBehaviour
             boneTransforms[i].localRotation = rot * limbs[idx].mBindPoseLocalRots[i]; // apply rotation towards child onto bind pose rotation
         }
     }
-    
+
     void DoIK_CCD(int idx)
     {
         Transform[] bones = limbs[idx].boneTransforms;
@@ -444,7 +447,7 @@ public class IKSolver : MonoBehaviour
             }
         }
 
-        // Pole alignment (same idea as your FABRIK solver)
+        // Pole alignment (same idea as FABRIK solver)
         if (bones.Length >= 3 && limbs[idx].pole != null)
         {
             for (int i = 1; i < endIndex; i++)
@@ -473,7 +476,7 @@ public class IKSolver : MonoBehaviour
             }
         }
 
-        // Apply final transforms to bones, reusing your existing logic
+        // Apply final transforms to bones, reusing logic from above
 
         // Set root position
         bones[0].position = limbs[idx].mPositions[0];
