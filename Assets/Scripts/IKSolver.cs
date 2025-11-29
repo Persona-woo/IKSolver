@@ -20,10 +20,9 @@ public struct IKLimbs
     public Transform pole; // world-space knee/elbow direction helper (optional)
 
     [HideInInspector] public Transform[] boneTransforms; // length must be >= 2
-    [HideInInspector] public Transform[] mBindPoses;
     [HideInInspector] public Vector3[] mPositions; // copy of bone positions
-    [HideInInspector] public Quaternion[] mBindPoseLocalRots; // bind pose local rotations
-    [HideInInspector] public Vector3[] mBindPoseLocalDirs; // bind pose directions from each bone to their child in local space
+    [HideInInspector] public Quaternion[] mBindPoseRotations; // bind pose world rotations
+    [HideInInspector] public Vector3[] mBindPoseDirections; // bind pose directions from each bone to their child
     [HideInInspector] public int mEndIndex; // index of end effector
     [HideInInspector] public float[] mBoneLengths; // length of each joint (in other words, distances between each joint to its next joint)
     [HideInInspector] public float mTotalLength; // total length of IK chain
@@ -86,11 +85,10 @@ public class IKSolver : MonoBehaviour
             }
 
             limbs[b].mEndIndex = numBones - 1;
-            limbs[b].mBindPoses = new Transform[numBones];
             limbs[b].mPositions = new Vector3[numBones];
             limbs[b].mBoneLengths = new float[numBones];
-            limbs[b].mBindPoseLocalRots = new Quaternion[numBones];
-            limbs[b].mBindPoseLocalDirs = new Vector3[numBones];
+            limbs[b].mBindPoseRotations = new Quaternion[numBones];
+            limbs[b].mBindPoseDirections = new Vector3[numBones];
 
             // If no target set, create one at endEffector's transform
             if (limbs[b].target == null)
@@ -105,7 +103,9 @@ public class IKSolver : MonoBehaviour
             // If no pole set, create one for each middle joint
             if (limbs[b].pole == null && bones.Length >= 3)
             {
+                Debug.Log("IK Warning: No target assigned for pole " + b + ". Creating pole.");
                 GameObject autoPole = new GameObject(bones[1].name + "_IKPole");
+                Debug.Log(bones[1].name);
 
 
                 Vector3 rootPos = bones[0].position;
@@ -126,8 +126,8 @@ public class IKSolver : MonoBehaviour
                 // If the limb is perfectly straight, then the direction is zero. set default
                 if (bendDir.sqrMagnitude == 0)
                 {
-                    // Default to the root bone's forward direction and transformed to world space
-                    bendDir = bones[0].TransformDirection(Vector3.forward);
+                    // Default to the root bone's forward direction in world space
+                    bendDir = bones[0].forward;
                 }
                 float limbLength = 0;
                 for (int i = 0; i < numBones - 1; i++)
@@ -145,8 +145,7 @@ public class IKSolver : MonoBehaviour
 
             for (int i = 0; i < numBones; i++)
             {
-                limbs[b].mBindPoses[i] = bones[i];
-                limbs[b].mBindPoseLocalRots[i] = bones[i].localRotation;
+                limbs[b].mBindPoseRotations[i] = bones[i].rotation;
 
                 if (i < limbs[b].mEndIndex)
                 {
@@ -154,11 +153,17 @@ public class IKSolver : MonoBehaviour
                     limbs[b].mBoneLengths[i] = length;
                     limbs[b].mTotalLength += length;
 
-                    limbs[b].mBindPoseLocalDirs[i] = bones[i + 1].localPosition.normalized;
+                    Vector3 worldDir = (bones[i + 1].position - bones[i].position).normalized;
+                    if (worldDir.sqrMagnitude < 0.0001f)
+                    {
+                        worldDir = bones[i].forward;
+                    }
+                    limbs[b].mBindPoseDirections[i] = worldDir;
                 }
                 else
                 {
-                    limbs[b].mBindPoseLocalDirs[i] = Vector3.zero;
+                    // Use valid default for end effector
+                    limbs[b].mBindPoseDirections[i] = bones[i].forward;
                 }
             }
         }
@@ -195,6 +200,7 @@ public class IKSolver : MonoBehaviour
         {
             if (limbs[i].target != null)
             {
+                //Debug.Log("Doing IK");
                 DoIK(i); //Change to DoIK_CCD(i) if using CCD algorithm, default is FABRIK
             }
         }
@@ -228,8 +234,14 @@ public class IKSolver : MonoBehaviour
         Transform target = limbs[idx].target;
         int endIndex = limbs[idx].mEndIndex;
 
-        Vector3 distance = new Vector3(0.0f, 0.0f, 0.0f);
-        Vector3 direction = new Vector3(0.0f, 0.0f, 0.0f);
+        Debug.Log(boneTransforms.ToString());
+        for (int i = 0; i < boneTransforms.Length; i++)
+        {
+            Debug.Log(boneTransforms[i]);
+        }
+        Debug.Log(target);
+
+        Vector3 direction = Vector3.zero;
         Vector3 rootOriginalPos = boneTransforms[0].position; // Save root's original position
 
         // Fill mPositions with current bone transform positions
@@ -240,7 +252,6 @@ public class IKSolver : MonoBehaviour
             // If setting is on, draw debug line
             if (debug_draw && i < boneTransforms.Length - 1)
             {
-                Vector3 d = (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized;
                 Debug.DrawLine(limbs[idx].mPositions[i], limbs[idx].mPositions[i + 1], Color.yellow);
                 if (i != 0 && i != boneTransforms.Length - 1)
                 {
@@ -252,7 +263,6 @@ public class IKSolver : MonoBehaviour
         // If target is out of reach, just stretch towards it
         if (Vector3.Distance(limbs[idx].mPositions[0], target.position) > limbs[idx].mTotalLength)
         {
-            // Debug.Log("Out of reach");
             direction = (target.position - limbs[idx].mPositions[0]).normalized; // determine direction towards target
             limbs[idx].mPositions[0] = rootOriginalPos; // ensure root is in its original position
             for (int i = 1; i < boneTransforms.Length; i++)
@@ -263,7 +273,6 @@ public class IKSolver : MonoBehaviour
         // Else, target is not out of reach. Apply FABRIK.
         else
         {
-            // Debug.Log("FABRIK");
             // ----- START of FABRIK Algorithm -----
             for (int iter = 0; iter < iterations; iter++)
             {
@@ -339,23 +348,26 @@ public class IKSolver : MonoBehaviour
                 break; // end effector has no child to aim at
             }
 
-            Vector3 desiredWorldDir = (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized; // world space direction to child
+            // Current world direction to child
+            Vector3 desiredWorldDir = (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized;
 
-            Vector3 desiredLocalDir = desiredWorldDir;
-            if (boneTransforms[i].parent != null)
+            if (desiredWorldDir.sqrMagnitude < 0.0001f)
             {
-                // convert direction into bone's local space
-                desiredLocalDir = boneTransforms[i].parent.InverseTransformDirection(desiredWorldDir);
+                Debug.Log($"IK Warning: Invalid direction for bone {i} in limb {idx}");
+                continue;
             }
 
-            if (limbs[idx].mBindPoseLocalDirs[i].sqrMagnitude < float.MinValue)
+            if (limbs[idx].mBindPoseDirections[i].sqrMagnitude < 0.0001f)
             {
                 Debug.Log("IK Error: Bind pose rotation for bone index " + i + " is invalid.");
                 continue;
             }
 
-            Quaternion rot = Quaternion.FromToRotation(limbs[idx].mBindPoseLocalDirs[i], desiredLocalDir);
-            boneTransforms[i].localRotation = rot * limbs[idx].mBindPoseLocalRots[i]; // apply rotation towards child onto bind pose rotation
+            // Calculate rotation from bind pose direction to desired direction
+            Quaternion rot = Quaternion.FromToRotation(limbs[idx].mBindPoseDirections[i], desiredWorldDir);
+
+            // Apply rotation to bind pose rotation
+            boneTransforms[i].rotation = rot * limbs[idx].mBindPoseRotations[i];
         }
     }
 
@@ -476,7 +488,7 @@ public class IKSolver : MonoBehaviour
             }
         }
 
-        // Apply final transforms to bones, reusing logic from above
+        // Apply final transforms to bones
 
         // Set root position
         bones[0].position = limbs[idx].mPositions[0];
@@ -490,23 +502,24 @@ public class IKSolver : MonoBehaviour
             Vector3 desiredWorldDir =
                 (limbs[idx].mPositions[i + 1] - limbs[idx].mPositions[i]).normalized;
 
-            Vector3 desiredLocalDir = desiredWorldDir;
-            if (bones[i].parent != null)
+            if (desiredWorldDir.sqrMagnitude < 0.0001f)
             {
-                desiredLocalDir =
-                    bones[i].parent.InverseTransformDirection(desiredWorldDir);
-            }
-
-            if (limbs[idx].mBindPoseLocalDirs[i].sqrMagnitude < float.Epsilon)
-            {
-                Debug.Log("IK Error: Bind pose rotation for bone index " + i + " is invalid.");
+                Debug.Log("IK Warning: Invalid direction for bone {i} in limb {idx}");
                 continue;
             }
 
-            Quaternion rotToChild =
-                Quaternion.FromToRotation(limbs[idx].mBindPoseLocalDirs[i], desiredLocalDir);
+            if (limbs[idx].mBindPoseDirections[i].sqrMagnitude < 0.0001f)
+            {
+                Debug.Log("IK Warning: Bind pose direction for bone index {i} is invalid.");
+                continue;
+            }
 
-            bones[i].localRotation = rotToChild * limbs[idx].mBindPoseLocalRots[i];
+            // Calculate rotation from bind pose direction to desired direction
+            Quaternion rotToChild =
+                Quaternion.FromToRotation(limbs[idx].mBindPoseDirections[i], desiredWorldDir);
+
+            // Apply rotation to bind pose rotation
+            bones[i].rotation = rotToChild * limbs[idx].mBindPoseRotations[i];
         }
     }
 
