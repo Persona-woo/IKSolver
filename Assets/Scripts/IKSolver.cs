@@ -171,7 +171,7 @@ public class IKSolver : MonoBehaviour
 
     void LateUpdate()
     {
-        // This check ensures we only calculate offsets after LegStepper has created its targets
+/*        // This check ensures we only calculate offsets after LegStepper has created its targets
         if (!mPolesInitialized)
         {
             InitializePoleOffsets();
@@ -190,11 +190,12 @@ public class IKSolver : MonoBehaviour
                         // Transform the local offset by the body's current rotation to get the world-space offset
                         Vector3 worldOffset = stepper.root.rotation * mInitialPoleOffsets[i];
                         // Move the pole to maintain its initial offset from the moving leg target
-                        limbs[i].pole.position = stepper.GetLegTarget(i).transform.position + worldOffset;
+                        //limbs[i].pole.position = stepper.GetLegTarget(i).transform.position + worldOffset;
                     }
+                    Debug.DrawLine(limbs[i].pole.position, limbs[i].mPositions[0], Color.blue);
                 }
             }
-        }
+        }*/
 
         for (int i = 0; i < limbs.Length; i++)
         {
@@ -206,7 +207,7 @@ public class IKSolver : MonoBehaviour
         }
     }
 
-    private void InitializePoleOffsets()
+/*    private void InitializePoleOffsets()
     {
         LegStepper stepper = GetComponent<LegStepper>();
         // Ensure LegStepper has finished its Start() method and created the targets
@@ -225,7 +226,7 @@ public class IKSolver : MonoBehaviour
             }
             mPolesInitialized = true;
         }
-    }
+    }*/
 
     // Main IK Solver function using FABRIK algorithm
     void DoIK(int idx)
@@ -233,13 +234,6 @@ public class IKSolver : MonoBehaviour
         Transform[] boneTransforms = limbs[idx].boneTransforms;
         Transform target = limbs[idx].target;
         int endIndex = limbs[idx].mEndIndex;
-
-        Debug.Log(boneTransforms.ToString());
-        for (int i = 0; i < boneTransforms.Length; i++)
-        {
-            Debug.Log(boneTransforms[i]);
-        }
-        Debug.Log(target);
 
         Vector3 direction = Vector3.zero;
         Vector3 rootOriginalPos = boneTransforms[0].position; // Save root's original position
