@@ -1612,6 +1612,7 @@ MonoBehaviour:
   iterations: 100
   tolerance: 0.1
   debug_draw: 1
+  FABRIK_or_CCD: 1
   mNumLimbs: 0
 --- !u!114 &1195987995
 MonoBehaviour:

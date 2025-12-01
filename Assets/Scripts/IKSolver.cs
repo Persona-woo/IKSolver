@@ -18,7 +18,7 @@ public struct IKLimbs
     public Transform target; // target's world-space transform
     [Tooltip("Pole is optional but recommended for knee/elbow joints.")]
     public Transform pole; // world-space knee/elbow direction helper (optional)
-
+    
     [HideInInspector] public Transform[] boneTransforms; // length must be >= 2
     [HideInInspector] public Vector3[] mPositions; // copy of bone positions
     [HideInInspector] public Quaternion[] mBindPoseRotations; // bind pose world rotations
@@ -39,7 +39,8 @@ public class IKSolver : MonoBehaviour
     [SerializeField] float tolerance = 0.5f;
     [Tooltip("Turn on debug drawing of IK chain.")]
     [SerializeField] bool debug_draw = true;
-
+    [Tooltip("IF true then use FABRIK, false use CCD")]
+    [SerializeField] bool FABRIK_or_CCD = true; 
     [HideInInspector] public int mNumLimbs; // number of limbs (can be passed into LegStepper)
     private Vector3[] mInitialPoleOffsets; // Store the initial offset of the pole from the end effector
     private bool mPolesInitialized = false;
@@ -200,8 +201,15 @@ public class IKSolver : MonoBehaviour
         {
             if (limbs[i].target != null)
             {
-                //Debug.Log("Doing IK");
-                DoIK(i); //Change to DoIK_CCD(i) if using CCD algorithm, default is FABRIK
+                if (FABRIK_or_CCD)
+                {
+                    //Debug.Log("Doing IK");
+                    DoIK(i); //Change to DoIK_CCD(i) if using CCD algorithm, default is FABRIK
+                }
+                else
+                {
+                    DoIK_CCD(i);
+                }
             }
         }
     }
