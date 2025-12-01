@@ -20,6 +20,8 @@ public class LegStepper : MonoBehaviour
     public float speedToStrideSpeedMultiplier = 1.0f;
     [Tooltip("How much the body's angular speed (deg/s) affects the stride speed.")]
     public float angularSpeedToStrideSpeedMultiplier = 0.1f;
+    [Tooltip("How much forward speed affects the length of the stride.")]
+    public float speedToStrideDistanceMultiplier = 0.1f;
     [Tooltip("The maximum speed a step can have.")]
     public float maxStrideSpeed = 15f;
 
@@ -195,9 +197,15 @@ public class LegStepper : MonoBehaviour
                 mStepping[i] = true;
                 groupStartedStepping = true;
 
-                // Your original target logic: step toward ground target, slightly past it
-                mTargetPos[i] = mLegTargets[i].transform.position
-                                + (mLegTargets[i].transform.position - mCurrentPos[i]).normalized * 0.05f;
+                // Get the base target position
+                Vector3 targetPosition = mLegTargets[i].transform.position;
+
+                // Add an offset based on the spider's forward speed
+                Vector3 forwardDirection = Vector3.ProjectOnPlane(transform.forward, SurfaceNormal).normalized;
+                float forwardOffset = controller.ForwardSpeed * speedToStrideDistanceMultiplier;
+                targetPosition += forwardDirection * forwardOffset;
+
+                mTargetPos[i] = targetPosition;
             }
 
             // --- Continue / finish the step ---

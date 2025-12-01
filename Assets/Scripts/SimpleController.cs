@@ -9,6 +9,8 @@ public class SimpleController : MonoBehaviour
 {
     [Tooltip("The speed at which the object moves.")]
     [SerializeField] private float moveSpeed = 5f;
+    [Tooltip("The speed at which the object sprints.")]
+    [SerializeField] private float sprintSpeed = 10f;
     [Tooltip("The speed at which the object rotates in degrees per second.")]
     [SerializeField] private float rotationSpeed = 100f;
 
@@ -18,9 +20,19 @@ public class SimpleController : MonoBehaviour
     public bool HasInput { get; private set; }
 
     /// <summary>
+    /// True if the sprint input is currently active.
+    /// </summary>
+    public bool IsSprinting { get; private set; }
+
+    /// <summary>
     /// The current intended movement speed based on input.
     /// </summary>
     public float CurrentLinearSpeed { get; private set; }
+
+    /// <summary>
+    /// The component of the velocity in the spider's forward direction.
+    /// </summary>
+    public float ForwardSpeed { get; private set; }
 
     /// <summary>
     /// The current intended rotation speed based on input.
@@ -54,13 +66,19 @@ public class SimpleController : MonoBehaviour
             rotationInput = 1f; // Rotate right
         }
 
+        // Check for sprint input (must be moving forward)
+        IsSprinting = Input.GetKey(KeyCode.LeftShift) && verticalInput > 0;
+
         // --- State Update ---
         // Determine if there is any input from the player
         HasInput = horizontalInput != 0f || verticalInput != 0f || rotationInput != 0f;
 
+        // Determine the current speed based on whether we are sprinting or not
+        float currentMoveSpeed = IsSprinting ? sprintSpeed : moveSpeed;
+
         // Calculate intended speeds based on input
         Vector3 moveVector = new Vector3(horizontalInput, 0, verticalInput);
-        CurrentLinearSpeed = moveVector.magnitude > 0 ? moveSpeed : 0f;
+        CurrentLinearSpeed = moveVector.magnitude > 0 ? currentMoveSpeed : 0f;
         CurrentAngularSpeed = Mathf.Abs(rotationInput) > 0 ? rotationSpeed : 0f;
 
         // --- Movement Calculation ---
@@ -73,8 +91,11 @@ public class SimpleController : MonoBehaviour
 
         // Calculate the final move direction relative to the surface-aligned axes
         Vector3 moveDirection = (forward * verticalInput + right * horizontalInput).normalized;
-        // Set the public Velocity property for the LegStepper to use
-        Velocity = moveDirection * moveSpeed;
+        // Set the public Velocity property for the LegStepper to use, applying the correct speed
+        Velocity = moveDirection * currentMoveSpeed;
+
+        // Calculate the forward speed component, ensuring it's not negative (for backward movement)
+        ForwardSpeed = Mathf.Max(0, Vector3.Dot(Velocity, forward));
 
         // Apply rotation around the body's "up" axis
         transform.Rotate(up, rotationInput * rotationSpeed * Time.deltaTime, Space.World);
